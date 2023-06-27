@@ -14,7 +14,7 @@ class FourierEmbedder():
 
         self.num_freqs = num_freqs
         self.temperature = temperature
-        self.freq_bands = temperature ** ( torch.arange(num_freqs) / num_freqs )  
+        self.freq_bands = temperature ** ( torch.arange(num_freqs) / num_freqs )
 
     @ torch.no_grad()
     def __call__(self, x, cat_dim=-1):
@@ -81,6 +81,20 @@ def make_ddim_sampling_parameters(alphacums, ddim_timesteps, eta, verbose=True):
         print(f'For the chosen value of eta, which is {eta}, '
               f'this results in the following sigma_t schedule for ddim sampler {sigmas}')
     return sigmas, alphas, alphas_prev
+
+def make_ddim_sampling_reverse_parameters(alphacums, ddim_timesteps, eta, verbose=True):
+    # select alphas for computing the variance schedule
+    alphas_prev = alphacums[ddim_timesteps]
+    alphas = np.asarray([alphacums[0]] + alphacums[ddim_timesteps[:-1]].tolist())
+
+    # according the the formula provided in https://arxiv.org/abs/2010.02502
+    sigmas = eta * np.sqrt((1 - alphas) / (1 - alphas_prev) * (1 - alphas_prev / alphas))
+    if verbose:
+        print(f'Selected alphas for ddim sampler: a_t: {alphas}; a_(t-1): {alphas_prev}')
+        print(f'For the chosen value of eta, which is {eta}, '
+              f'this results in the following sigma_t schedule for ddim sampler {sigmas}')
+    return sigmas, alphas, alphas_prev
+
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):

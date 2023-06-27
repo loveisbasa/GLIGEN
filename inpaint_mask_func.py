@@ -8,15 +8,28 @@ import numpy as np
 from PIL import Image
 import torch
 import torchvision
+import torchvision.transforms.functional as F
 
 
+def read_masks_from_figure(mask_path, num_masks, size):
+    "boxes should be the output from dataset, which is a batch of bounding boxes"
 
+    image_mask = torch.ones(size, size)
+    for i in range(num_masks): # This is batch dimension
+
+        mask = Image.open(mask_path+str(i)+".jpg").convert("L")
+        mask = mask.resize((size,size), Image.NEAREST)
+        mask = np.array(mask) / 255
+
+        image_mask = torch.minimum(image_mask, torch.from_numpy(mask).float())
+
+    return image_mask
 
 
 def draw_masks_from_boxes(boxes, size, randomize_fg_mask=False, random_add_bg_mask=False):
     "boxes should be the output from dataset, which is a batch of bounding boxes"
 
-    image_masks = [] 
+    image_masks = []
     for box in boxes: # This is batch dimension
 
         image_mask = torch.ones(size,size)
@@ -27,10 +40,10 @@ def draw_masks_from_boxes(boxes, size, randomize_fg_mask=False, random_add_bg_ma
             obj_height = y1-y0
             if randomize_fg_mask and (random.uniform(0,1)<0.5) and (obj_height>=4) and (obj_width>=4):
                 obj_mask = get_a_fg_mask(obj_height, obj_width)
-                image_mask[y0:y1,x0:x1] = image_mask[y0:y1,x0:x1] * obj_mask # put obj mask into the inpainting mask 
+                image_mask[y0:y1,x0:x1] = image_mask[y0:y1,x0:x1] * obj_mask # put obj mask into the inpainting mask
             else:
                 image_mask[y0:y1,x0:x1] = 0  # box itself is mask for the obj
-        
+
 
         # So far we already drew all masks for obj, add bg mask if needed
         if random_add_bg_mask and (random.uniform(0,1)<0.5):
@@ -46,44 +59,44 @@ def draw_masks_from_boxes(boxes, size, randomize_fg_mask=False, random_add_bg_ma
 
 def get_a_fg_mask(height, width):
     """
-    This will return an arbitrary mask for the obj, The overall masked region is ??? of all area. 
-    I first start from a 64*64 mask (in other words, assume all object has the size of 64*64), 
-    and use the empirically found parameters to generate a mask. Then I will resize (NEREAST) it into 
-    given size. 
+    This will return an arbitrary mask for the obj, The overall masked region is ??? of all area.
+    I first start from a 64*64 mask (in other words, assume all object has the size of 64*64),
+    and use the empirically found parameters to generate a mask. Then I will resize (NEREAST) it into
+    given size.
 
-    Due to some hyper-paramters such as minBrushWidth, the input height and width must larger than 
+    Due to some hyper-paramters such as minBrushWidth, the input height and width must larger than
     certain value. I set it as 4. In other words, for an object with size smaller than 4*4 (actual size is 32*32 in image space),
-    we will not convert it into a random mask, but always box mask during training. 
+    we will not convert it into a random mask, but always box mask during training.
 
-    Since I still want to mask to cover most portion of the actual object, and also want to make box coordinate still makes sense 
-    thus the hyper-parameters I set here will generate a mask with 75% overall area. 
-    The chances of the mask touching all 4 edges (top, bottom, left, right) is high, otherwise the 
-    grounding token information (based on box) will not be matched with mask here. (Once touching, the 
-    box info in grounding token is still true, one can think that as box coordiante for the object mask)   
+    Since I still want to mask to cover most portion of the actual object, and also want to make box coordinate still makes sense
+    thus the hyper-parameters I set here will generate a mask with 75% overall area.
+    The chances of the mask touching all 4 edges (top, bottom, left, right) is high, otherwise the
+    grounding token information (based on box) will not be matched with mask here. (Once touching, the
+    box info in grounding token is still true, one can think that as box coordiante for the object mask)
 
     """
-    assert height>=4 and width>=4 
+    assert height>=4 and width>=4
     size=64
-    max_parts=6 
+    max_parts=6
     maxVertex=10
-    maxLength=80 
+    maxLength=80
     minBrushWidth=10
-    maxBrushWidth=32 
+    maxBrushWidth=32
     maxAngle=360
-    mask = generate_stroke_mask(im_size=(size,size), 
-                                max_parts=max_parts, 
+    mask = generate_stroke_mask(im_size=(size,size),
+                                max_parts=max_parts,
                                 maxVertex=maxVertex,
                                 maxLength=maxLength,
                                 minBrushWidth=minBrushWidth,
-                                maxBrushWidth=maxBrushWidth, 
+                                maxBrushWidth=maxBrushWidth,
                                 maxAngle=maxAngle )
     mask = 1 - torch.tensor(mask)
-    
+
     # resize the mask according to the actual size
     mask = torch.nn.functional.interpolate(mask.unsqueeze(0).unsqueeze(0), size=(height, width))
     mask = mask.squeeze(0).squeeze(0)
 
-    return mask  
+    return mask
 
 
 
@@ -98,21 +111,21 @@ def get_a_bg_mask(size):
     """
     assert size == 64, "The following args is I empirically set for 64*64, which is StableDiffsion Latent size"
     size = 64
-    max_parts=4 
+    max_parts=4
     maxVertex=10
     maxLength=32
-    maxBrushWidth=12 
+    maxBrushWidth=12
     minBrushWidth=3
     maxAngle=360
-    mask = generate_stroke_mask( im_size=(size,size), 
-                                max_parts=max_parts, 
+    mask = generate_stroke_mask( im_size=(size,size),
+                                max_parts=max_parts,
                                 maxVertex=maxVertex,
                                 maxLength=maxLength,
                                 minBrushWidth=minBrushWidth,
-                                maxBrushWidth=maxBrushWidth, 
+                                maxBrushWidth=maxBrushWidth,
                                 maxAngle=maxAngle )
     mask = 1 - torch.tensor(mask)
-    return mask  
+    return mask
 
 
 
